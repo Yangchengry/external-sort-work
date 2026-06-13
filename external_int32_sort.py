@@ -172,26 +172,26 @@ def merge_all_text_runs(
     while len(current_runs) > 1:
         active_merges = min(workers, max(1, len(current_runs) // 2), max(1, memory_numbers // 3))
         memory_per_merge = max(3, memory_numbers // active_merges)
-        fan_in = min(64, max(2, memory_per_merge - 1), len(current_runs))#每个合并任务最多合并多少文件
+        fan_in = min(64, max(2, memory_per_merge - 1), len(current_runs))#max number of each mission's files to be combined
 
         groups = [
             current_runs[index : index + fan_in]
             for index in range(0, len(current_runs), fan_in)
-        ]#分组，每组对应一个合并任务
+        ]#make groups for every selecting mission
 
         next_runs: list[Path] = []
         with ProcessPoolExecutor(max_workers=active_merges) as executor:
             future_to_group = {}
             for group_index, group in enumerate(groups):
                 out_path = temp_dir / f"run_{pass_index:06d}_{group_index:08d}.txt"
-                future = executor.submit(merge_text_runs, [str(path) for path in group], str(out_path))#提交合并任务
+                future = executor.submit(merge_text_runs, [str(path) for path in group], str(out_path))#submit combining mission
                 future_to_group[future] = group
 
             for future in as_completed(future_to_group):
                 out_path = Path(future.result())
                 next_runs.append(out_path)
                 for old_path in future_to_group[future]:
-                    old_path.unlink(missing_ok=True)#删除已被合并的旧临时文本
+                    old_path.unlink(missing_ok=True)#delete partial files that have already been combined
 
         current_runs = sorted(next_runs)
         pass_index += 1
@@ -205,17 +205,17 @@ def external_text_sort(
     memory_numbers: int,
     workers: int,
     force: bool,
-) -> None:#排序总控对应函数
-    if memory_numbers < 3:#检查内存
+) -> None:#
+    if memory_numbers < 3:#check memory
         raise ValueError("memory_numbers must be at least 3")
 
     if output_path.exists() and not force:
         raise FileExistsError(f"output file already exists: {output_path}")
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)#确保输出目录存在
-    workers = max(1, min(workers, os.cpu_count() or 1, memory_numbers))#限制任务数量
+    output_path.parent.mkdir(parents=True, exist_ok=True)#make sure the path of the output exist
+    workers = max(1, min(workers, os.cpu_count() or 1, memory_numbers))#limit number of workers as cpu numbers
 
-    with tempfile.TemporaryDirectory(prefix=f"{input_path.stem}_sort_", dir=input_path.parent) as tmp:#临时目录，存储临时排好序的文件
+    with tempfile.TemporaryDirectory(prefix=f"{input_path.stem}_sort_", dir=input_path.parent) as tmp:#temporary dictionary for storing sorted partial files
         temp_dir = Path(tmp)
         runs = make_initial_text_runs(input_path, temp_dir, memory_numbers, workers)
         if not runs:
@@ -227,7 +227,7 @@ def external_text_sort(
         os.replace(final_run, output_path)
 
 
-def parse_args() -> argparse.Namespace:#定义用户操作方式
+def parse_args() -> argparse.Namespace:#define how users could make the program work
     parser = argparse.ArgumentParser(   
             description="External parallel sort for text files with one integer per line."
     )
@@ -241,13 +241,13 @@ def parse_args() -> argparse.Namespace:#定义用户操作方式
 
 def main() -> None:
     args = parse_args()
-    input_path = args.filename.resolve()
+    input_path = args.filename.resolve()#use the full name of the file's path instead of the shorten ones
     if not input_path.is_file():
         raise FileNotFoundError(input_path)
 
     output_path = (args.output.resolve() if args.output else default_output_path(input_path))
     if input_path == output_path:
-        raise ValueError("output path must be different from input path")
+        raise ValueError("output path must be different from input path")#防止输入输出文件相同
 
     external_text_sort(
             input_path=input_path,
