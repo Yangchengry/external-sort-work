@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Sort random_numbers.txt",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/external_int32_sort.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": [
+        "random_numbers.txt",
+        "12288",
+        "--force"
+      ]
+    }
+  ]
+}
