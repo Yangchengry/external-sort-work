@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 INT_BYTES = 4
-TEXT_WRITE_BATCH_SIZE = 8192
+TEXT_WRITE_BATCH_SIZE = 8192#set the buffers' sizes in case the data too big to put in it
 
 
 def default_output_path(source: Path) -> Path: #在新文件中生成结果对应文件名
@@ -101,7 +101,7 @@ def merge_text_runs(input_paths: list[str], output_path: str) -> str:#把排好�
                 output_buffer.append(value)#放进缓冲区
                 if len(output_buffer) >= TEXT_WRITE_BATCH_SIZE:
                     write_text_values(out, output_buffer)
-                    output_buffer.clear()
+                    output_buffer.clear()#输出heap对应存储数据，在运存中，但大小由TEXT_WRITE_BATCH_SIZE决定，定死了8192
 
                 next_value = read_next_int(files[index])
                 if next_value is not None:
@@ -205,6 +205,7 @@ def external_text_sort(
     memory_numbers: int,
     workers: int,
     force: bool,
+    temp_dir: Path | None,
 ) -> None:#this section combines all the functions above
     if memory_numbers < 3:#check memory size,too small can not operate properly
         raise ValueError("memory_numbers must be at least 3")
@@ -215,7 +216,10 @@ def external_text_sort(
     output_path.parent.mkdir(parents=True, exist_ok=True)#make sure the path of the output exist
     workers = max(1, min(workers, os.cpu_count() or 1, memory_numbers))#limit number of workers as cpu numbers
 
-    with tempfile.TemporaryDirectory(prefix=f"{input_path.stem}_sort_", dir=input_path.parent) as tmp:#temporary dictionary for storing sorted partial files
+    temp_parent = temp_dir if temp_dir else input_path.parent
+    temp_parent.mkdir(parents=True, exist_ok=True)#final merging file too big,direct it to another bigger disk
+
+    with tempfile.TemporaryDirectory(prefix=f"{input_path.stem}_sort_", dir=temp_parent) as tmp:#temporary dictionary for storing sorted partial files
         temp_dir = Path(tmp)
         runs = make_initial_text_runs(input_path, temp_dir, memory_numbers, workers)
         if not runs:
@@ -234,6 +238,7 @@ def parse_args() -> argparse.Namespace:#define how users could make the program 
     parser.add_argument("filename", type=Path)
     parser.add_argument("memory_numbers", type=int, help="maximum number of integers kept in memory")
     parser.add_argument("--output", type=Path, help="default: <input>.sorted<suffix> in the same directory")
+    parser.add_argument("--temp-dir", type=Path, help="directory for temporary files")
     parser.add_argument("--workers", type=int, default=os.cpu_count() or 1)
     parser.add_argument("--force", action="store_true", help="overwrite output file if it exists")
     return parser.parse_args()
@@ -255,6 +260,7 @@ def main() -> None:
             memory_numbers=args.memory_numbers,
             workers=args.workers,
             force=args.force,
+            temp_dir=args.temp_dir,
         )
     print(output_path)
 
