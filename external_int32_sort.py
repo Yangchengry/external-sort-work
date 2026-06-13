@@ -1,7 +1,7 @@
 from __future__ import annotations #optional一个附加功能，能使整个程序在运行时暂时将类型标注存为字符，并在下文中需要的地方调用，从而避免产生程序错误
 
 import argparse
-import heapq
+import heapq #用这个函数库能实现找到当前文件最小数的功能
 import multiprocessing as mp #多cpu核心同时操作
 import os
 import tempfile
@@ -32,7 +32,7 @@ def write_text_values(output, values: list[int]) -> None: #把整数写进txt文
 def scan_text_ranges(input_path: Path, numbers_per_chunk: int) -> list[tuple[int, int]]:#文本文件分块
     ranges: list[tuple[int, int]] = []#返回一个列表
 
-    with open(input_path, "rb") as src:
+    with open(input_path, "rb") as src:#rb是用二进制方式读取文件
         start = src.tell()
         count = 0
 
@@ -70,21 +70,21 @@ def sort_text_range(input_path: str, start_byte: int, end_byte: int, output_path
                 text = stripped.decode("utf-8-sig" if start_byte == 0 and not values else "utf-8")
                 values.append(int(text))
 
-    values.sort()
+    values.sort()#给当前分块排序
     with open(output_path, "w", encoding="utf-8", newline="\n") as out:
-        write_text_values(out, values)
+        write_text_values(out, values)#排好序的分块内容整成临时文件
 
     return output_path
 
 
-def read_next_int(file_obj):
+def read_next_int(file_obj):#读下一个整数
     line = file_obj.readline()
     while line and not line.strip():
         line = file_obj.readline()
     return int(line) if line else None
 
 
-def merge_text_runs(input_paths: list[str], output_path: str) -> str:
+def merge_text_runs(input_paths: list[str], output_path: str) -> str:#把排好序的临时文件合成大文件
     files = [open(path, "r", encoding="utf-8") for path in input_paths]
     heap = []
 
@@ -92,13 +92,13 @@ def merge_text_runs(input_paths: list[str], output_path: str) -> str:
         for index, file_obj in enumerate(files):
             value = read_next_int(file_obj)
             if value is not None:
-                heapq.heappush(heap, (value, index))
+                heapq.heappush(heap, (value, index))#把每个临时文件的第一个数字放进同一个堆
 
         with open(output_path, "w", encoding="utf-8", newline="\n") as out:
             output_buffer: list[int] = []
             while heap:
-                value, index = heapq.heappop(heap)
-                output_buffer.append(value)
+                value, index = heapq.heappop(heap)#堆里还有数就不停取出堆中当前最小值
+                output_buffer.append(value)#放进缓冲区
                 if len(output_buffer) >= TEXT_WRITE_BATCH_SIZE:
                     write_text_values(out, output_buffer)
                     output_buffer.clear()
@@ -122,14 +122,14 @@ def make_initial_text_runs(
     workers: int,
 ) -> list[Path]:
     active_workers = min(workers, memory_numbers)
-    chunk_numbers = max(1, memory_numbers // active_workers)
-    ranges = scan_text_ranges(input_path, chunk_numbers)
+    chunk_numbers = max(1, memory_numbers // active_workers)#限制处理进程大小，避免超过内存限制
+    ranges = scan_text_ranges(input_path, chunk_numbers)#将大文件分块
     if not ranges:
         return []
 
     runs: list[Path] = []
     active_workers = min(workers, len(ranges), memory_numbers)
-    with ProcessPoolExecutor(max_workers=active_workers) as executor:
+    with ProcessPoolExecutor(max_workers=active_workers) as executor:#多进程
         pending = set()
         range_iter = iter(enumerate(ranges))
 
@@ -165,33 +165,33 @@ def merge_all_text_runs(
     temp_dir: Path,
     memory_numbers: int,
     workers: int,
-) -> Path:
+) -> Path:#合并所有分好的临时文本块
     pass_index = 1
     current_runs = runs
 
     while len(current_runs) > 1:
         active_merges = min(workers, max(1, len(current_runs) // 2), max(1, memory_numbers // 3))
         memory_per_merge = max(3, memory_numbers // active_merges)
-        fan_in = min(64, max(2, memory_per_merge - 1), len(current_runs))
+        fan_in = min(64, max(2, memory_per_merge - 1), len(current_runs))#每个合并任务最多合并多少文件
 
         groups = [
             current_runs[index : index + fan_in]
             for index in range(0, len(current_runs), fan_in)
-        ]
+        ]#分组，每组对应一个合并任务
 
         next_runs: list[Path] = []
         with ProcessPoolExecutor(max_workers=active_merges) as executor:
             future_to_group = {}
             for group_index, group in enumerate(groups):
                 out_path = temp_dir / f"run_{pass_index:06d}_{group_index:08d}.txt"
-                future = executor.submit(merge_text_runs, [str(path) for path in group], str(out_path))
+                future = executor.submit(merge_text_runs, [str(path) for path in group], str(out_path))#提交合并任务
                 future_to_group[future] = group
 
             for future in as_completed(future_to_group):
                 out_path = Path(future.result())
                 next_runs.append(out_path)
                 for old_path in future_to_group[future]:
-                    old_path.unlink(missing_ok=True)
+                    old_path.unlink(missing_ok=True)#删除已被合并的旧临时文本
 
         current_runs = sorted(next_runs)
         pass_index += 1
@@ -205,17 +205,17 @@ def external_text_sort(
     memory_numbers: int,
     workers: int,
     force: bool,
-) -> None:
-    if memory_numbers < 3:
+) -> None:#排序总控对应函数
+    if memory_numbers < 3:#检查内存
         raise ValueError("memory_numbers must be at least 3")
 
     if output_path.exists() and not force:
         raise FileExistsError(f"output file already exists: {output_path}")
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    workers = max(1, min(workers, os.cpu_count() or 1, memory_numbers))
+    output_path.parent.mkdir(parents=True, exist_ok=True)#确保输出目录存在
+    workers = max(1, min(workers, os.cpu_count() or 1, memory_numbers))#限制任务数量
 
-    with tempfile.TemporaryDirectory(prefix=f"{input_path.stem}_sort_", dir=input_path.parent) as tmp:
+    with tempfile.TemporaryDirectory(prefix=f"{input_path.stem}_sort_", dir=input_path.parent) as tmp:#临时目录，存储临时排好序的文件
         temp_dir = Path(tmp)
         runs = make_initial_text_runs(input_path, temp_dir, memory_numbers, workers)
         if not runs:
@@ -227,12 +227,12 @@ def external_text_sort(
         os.replace(final_run, output_path)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args() -> argparse.Namespace:#定义用户操作方式
     parser = argparse.ArgumentParser(   
             description="External parallel sort for text files with one integer per line."
     )
     parser.add_argument("filename", type=Path)
-    parser.add_argument("memory_numbers", type=int, help="maximum number of 32-bit integers kept in memory")
+    parser.add_argument("memory_numbers", type=int, help="maximum number of integers kept in memory")
     parser.add_argument("--output", type=Path, help="default: <input>.sorted<suffix> in the same directory")
     parser.add_argument("--workers", type=int, default=os.cpu_count() or 1)
     parser.add_argument("--force", action="store_true", help="overwrite output file if it exists")
