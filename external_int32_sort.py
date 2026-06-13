@@ -120,7 +120,7 @@ def make_initial_text_runs(
     temp_dir: Path,
     memory_numbers: int,
     workers: int,
-) -> list[Path]:
+) -> list[Path]:#开始生成多个任务块，并同时独立进行每块中对应临时文件的排序
     active_workers = min(workers, memory_numbers)
     chunk_numbers = max(1, memory_numbers // active_workers)#限制处理进程大小，避免超过内存限制
     ranges = scan_text_ranges(input_path, chunk_numbers)#将大文件分块
@@ -205,8 +205,8 @@ def external_text_sort(
     memory_numbers: int,
     workers: int,
     force: bool,
-) -> None:#
-    if memory_numbers < 3:#check memory
+) -> None:#this section combines all the functions above
+    if memory_numbers < 3:#check memory size,too small can not operate properly
         raise ValueError("memory_numbers must be at least 3")
 
     if output_path.exists() and not force:
